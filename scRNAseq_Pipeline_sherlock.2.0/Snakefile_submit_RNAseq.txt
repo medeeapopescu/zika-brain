@@ -1,0 +1,6 @@
+
+snakemake -j 10 -w 100 -k --config location=$root_folder --cluster "sbatch --job-name={params.name} --ntasks=1 --cpus-per-task={threads} --partition={params.partition} --mem={params.mem} -o {params.name}_%j.log" --rerun-incomplete -s Snakefile_toplevel1.py -n
+
+nohup snakemake -j 10 -w 100 -k --config location=$root_folder --cluster "sbatch --job-name={params.name} --ntasks=1 --cpus-per-task={threads} --partition={params.partition} --mem={params.mem} -o {params.name}_%j.log" --rerun-incomplete -s Snakefile_toplevel1.py > /local10G/brianyu/rnaseq_results/Mouse/2015.07.24_progress.log &
+
+

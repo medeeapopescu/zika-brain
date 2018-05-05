@@ -1,0 +1,15 @@
+	entry
+biosample_name	ERA_batch4_run12
+code_directory	/share/PI/quake/wanxinw/scRNAseq_Pipeline/
+tool_directory	/local10G/brianyu/tools/
+
+Desired_Read_Length	75
+Down_Sample_Read_Number	0
+Gene_Detection_Threshold	0
+
+STAR_partition	normal,hns
+STAR_memory	58000
+STAR_thread	11
+STAR_genome_directory	/share/PI/quake/wanxinw/references/STAR_hg19.wERCC/
+GTF_reference_annotation	/share/PI/quake/wanxinw/references/hg19/hg19_wERCC.gtf
+BED_reference_annotation	/share/PI/quake/wanxinw/scRNAseq_Pipeline/hg19_known_genes_forRSeQC/hg19_UCSC_knownGene.bed

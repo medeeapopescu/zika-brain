@@ -1,0 +1,266 @@
+#!/bin/bash
+# script assumes length of seedfile provided by command line with "-t 1-<file length>"
+#$ -S /bin/bash
+#$ -N CIRM_mouse
+#$ -o //quakestor4/brianyu/2014.09.04_Mouse_Bone_Marrow_MACM2/alignment_reports/
+#$ -cwd
+#$ -j y
+#set memory to limit number of processes per node
+#$ -l mem_token=24G
+date
+hostname
+
+source /quakestor3/maenge/includes/include.sh
+
+# CLUSTER_REF_ROOT=/state/partition1
+SEEDFILE=$1
+# MY_ROOT=/quakestor3/maenge/CIRM_mouse
+MY_ROOT=/quakestor4/brianyu/2014.09.04_Mouse_Bone_Marrow_MACM2/141002_NS500126_0121_AH02WAAFXX
+DATA_DIR=/quakestor4/brianyu/2014.09.04_Mouse_Bone_Marrow_MACM2/141002_NS500126_0121_AH02WAAFXX
+RESOURCES=/quakestor3/maenge/resources
+# PREPROCESS_SCRIPT=$RESOURCES/scripts/preprocess_fastq.sh
+PREPROCESS_SCRIPT=/quakestor4/brianyu/martin_scripts/preprocess_fastq.sh
+ALIGN_SCRIPT=$RESOURCES/scripts/align_reads.sh
+EXPRS_SCRIPT=$RESOURCES/scripts/summarize_expression.sh
+QC_SCRIPT=$RESOURCES/scripts/makeqc_mouse.pl
+GENOMEDIR=$RESOURCES/mm10-ERCC/mm10_wERCC_STAR_SPARSE_ANNOTATED/
+source /quakestor3/maenge/venv/python2.7.6/bin/activate
+#export PYTHONPATH=$MY_ROOT/venv/python2.7
+
+
+#BOWTIE_REFERENCE_INDEX=$RESOURCES/hg19_ercc/Bowtie2Index/hg19_ercc
+BOWTIE_REFERENCE_ANNOTATION=$RESOURCES/mm10-ERCC/mm10-ERCC.gtf
+REFERENCE_ANNOTATION=$RESOURCES/mm10-ERCC/mm10-ERCC.gtf
+EXON_REFERENCE_ANNOTATION=$RESOURCES/mm10-ERCC/mm10-ERCC_exon_wNames.bed
+
+# FASTQ_FILES_1=$(cat ${SEEDFILE} | head -n $SGE_TASK_ID | tail -n 1 | cut -f 1 -d ",")
+# FASTQ_FILE_1=$(cat ${SEEDFILE} | head -n $SGE_TASK_ID | tail -n 1 | cut -f 2 -d ",")
+# FASTQ_FILES_2=$(cat ${SEEDFILE} | head -n $SGE_TASK_ID | tail -n 1 | cut -f 3 -d ",")
+# FASTQ_FILE_2=$(cat ${SEEDFILE} | head -n $SGE_TASK_ID | tail -n 1 | cut -f 4 -d ",")
+# #BASE_NAME=$(cat ${SEEDFILE} | head -n $SGE_TASK_ID | tail -n 1 | cut -f 4)
+# BASE_NAME=$(echo $FASTQ_FILE_1 | cut -d "_" -f 1)
+
+
+# SGE Options
+# Create Working Directory
+WDIR=/state/partition3/$USER/$JOB_NAME-$JOB_ID-$SGE_TASK_ID
+mkdir -p $WDIR
+if [ ! -d $WDIR ]
+then
+  echo Unable to create working directory $WDIR
+  exit
+fi
+cd $WDIR
+
+echo Working dir is $WDIR
+
+
+##########################################################
+
+# Brian's code to bring in fastq files
+# Setup Process (User Set Variables)
+samplename=$(head -n $SGE_TASK_ID $SEEDFILE | tail -n 1)
+echo $samplename
+sample_id=$(echo $samplename | cut -d- -f 2,3)
+exp_dir=$DATA_DIR/$samplename
+echo $exp_dir
+
+# Creating Local Copy of Files
+echo "create local file copy"
+
+cd $exp_dir
+scp *_R1_001.fastq.gz $WDIR
+scp *_R2_001.fastq.gz $WDIR
+
+cd $WDIR
+cat *_R1_001.fastq.gz > R1.fastq.gz
+cat *_R2_001.fastq.gz > R2.fastq.gz
+
+gzip -d R1.fastq.gz
+gzip -d R2.fastq.gz
+
+# These lines are used to make my code compatible with Martin's other scripts
+FASTQ_FILE_1=R1
+FASTQ_FILE_2=R2
+
+
+##################################################
+
+
+# Brian's code to check BASE_NAME
+BASE_NAME=$sample_id
+
+echo 'Base name is: ' $BASE_NAME
+
+# Check how much space we have.
+#df -h
+
+if [ -z "$BASE_NAME" ]
+then
+  echo 'Base name is empty! exiting...'
+  exit
+fi
+
+#RDIR=$MY_ROOT/aligned/$BASE_NAME
+RDIR=$MY_ROOT/$samplename/CIRM_pipeline
+echo Output dir is $RDIR
+
+if [ ! -e $RDIR  ]
+then
+	mkdir -p $RDIR
+	echo "Making new output directory: "$RDIR
+fi
+
+####################################################
+
+# Continue with Martin's code
+
+export TMPDIR=$WDIR/tmp
+
+if [ ! -d $TMPDIR ]
+then
+    mkdir $TMPDIR
+fi
+
+DO_PREPROCESS=0
+DO_ALIGN=0
+DO_EXPRS=0
+DO_QC=0
+
+if [ ! -e $RDIR/preprocess.time ] || [ $PREPROCESS_SCRIPT  -nt $RDIR/preprocess.time ]
+then
+DO_PREPROCESS=1
+fi
+if [ ! -e $RDIR/align.time ] || [ $ALIGN_SCRIPT -nt $RDIR/align.time  ]
+then
+DO_ALIGN=1
+fi
+if [ ! -e $RDIR/exprs.time ] || [ $EXPRS_SCRIPT  -nt $RDIR/exprs.time ]
+then
+DO_EXPRS=1
+fi
+if [ ! -e $RDIR/qc.time ] || [ $QC_SCRIPT  -nt $RDIR/qc.time ]
+then
+DO_QC=1
+fi
+
+
+# First, check which parts we can skip
+if [ $DO_PREPROCESS == 0 ] && [ $DO_ALIGN == 0 ] && [ $DO_EXPRS == 0 ] && [ $DO_QC == 0 ]
+then
+    echo Skipping $BASE_NAME completely, it is already done
+    exit
+fi
+
+if [ $DO_PREPROCESS == 1 ]
+then
+    DO_ALIGN=1
+fi
+
+if [ $DO_ALIGN == 1 ]
+then
+    DO_EXPRS=1
+fi
+if [ $DO_EXPRS == 1 ]
+then
+    DO_QC=1
+fi
+
+
+# Copy Data and Config Files
+date
+
+
+if [ $DO_PREPROCESS == 1 ]
+then
+    echo "Running preprocess script";
+    source $PREPROCESS_SCRIPT
+    mkdir $RDIR/preprocess_fastq
+    cp -r -a  $WDIR/cutadapt_output/* $RDIR/preprocess_fastq/
+    cp -r -a  $WDIR/fastqc_output $RDIR/
+    if [ -e $WDIR/cutadapt_output/$BASE_NAME.R1.cutadapt.2.fastq ] && [ $WDIR/fastqc_output/$BASE_NAME.cutadapt.1.prinseq_good_1_val_1.fq_fastqc.html ]
+    then
+	touch $RDIR/preprocess.time
+    fi
+else
+    echo "Skipping preprocess step"
+    if [ $DO_ALIGN == 1 ] || [ $DO_QC == 1 ]
+    then
+	mkdir $WDIR/cutadapt_output
+	cp  $RDIR/preprocess_fastq/*.cutadapt.2.fastq $WDIR/cutadapt_output/
+    fi
+    if [ $DO_QC == 1 ]
+    then
+	cp -r $RDIR/fastqc_output $WDIR
+    fi
+fi
+
+if [ $DO_ALIGN == 1 ]
+then
+    source $ALIGN_SCRIPT
+    cp -r $WDIR/STAR_output $RDIR/
+    if [ -e $RDIR/STAR_output/$BASE_NAME.sorted.bam  ]
+    then
+	touch $RDIR/align.time
+    fi
+else
+    echo "Skipping alignment step"
+    if [ $DO_EXPRS == 1 ] || [ $DO_QC == 1 ]
+    then
+	mkdir $WDIR/STAR_output
+	cp -r $RDIR/STAR_output/*  $WDIR/STAR_output
+    fi
+fi
+
+# End of alignment step
+
+if [ $DO_EXPRS == 1 ]
+then
+    source $EXPRS_SCRIPT
+#    cp -r $WDIR/cufflinks_output $RDIR/
+    cp -r $WDIR/exon_output $RDIR/
+    cp -r $WDIR/htseq_output $RDIR/
+#    if [ -e $WDIR/cufflinks_output/$BASE_NAME.genes.fpkm_tracking ] && [ -e $WDIR/htseq_output/$BASE_NAME.htseq.out ] 
+    if [ -e $RDIR/exon_output/$BASE_NAME.exon_counts.out ] && [ -e $RDIR/htseq_output/$BASE_NAME.htseq.out ] 
+    then
+	touch $RDIR/exprs.time
+    fi
+else
+    echo "Skipping summarize expression step"
+#    if [$DO_QC == 1]
+#	cp -r $RDIR/cufflinks_output $RDIR
+#	cp -r $RDIR/tophat_output $RDIR
+#    fi
+fi
+
+
+# Run QC scripts
+
+if [ $DO_QC == 1 ]
+then
+    mkdir qc_output
+    cd qc_output
+    echo $WDIR | $QC_SCRIPT --curdir
+    cp -r  $WDIR/qc_output $RDIR
+    if [ -e $RDIR/qc_output/bamfile.html ]
+    then
+	touch $RDIR/qc.time
+    fi
+else
+    echo "Skipping QC step. This should not happen, what did you do wrong?"
+fi
+
+# Done!
+
+# Put your Science related commands here
+date
+echo copy back results
+
+ls $WDIR/
+ls $WDIR/STAR_output/
+
+
+# Cleanup 
+echo cleanup
+rm -rf $WDIR
+
