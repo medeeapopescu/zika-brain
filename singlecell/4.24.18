@@ -1,0 +1,25 @@
+meta.groupby(['patient', 'cell_type']).count()
+meta.T.groupby(['patient', 'cell_type']).count()
+data.loc['TRAC'].max()
+
+plot_tsne(tsne, labels=meta.loc['patient_n'], title='patient'), cmap='viridis')
+plot_tsne(tsne, labels=meta.loc['patient_n'], title='patient', cmap='viridis')
+
+data.index[-56:]
+(data.loc[:-56] > 0).sum(axis=0)
+(data.iloc[:-56] > 0).sum(axis=0)
+
+n_genes = (data.iloc[:-56] > 0).sum(axis=0)
+n_genes = (data.iloc[:-56] > 1e-6).sum(axis=0)
+
+[meta.loc['patient'] == 'control']
+n_genes.loc[meta.loc['patient'] == 'control'].mean()
+n_genes.loc[meta.loc['patient'] == 'control'].std()
+n_genes.loc[meta.loc['patient'] == 'exp'].mean()
+n_genes.loc[meta.loc['patient'] == 'exp'].std()
+
+data_top
+data_top.index
+print(data_top.index)
+
+ run spring_rotation_data/singlecell/clustering_both_patients.py --filter --translatenames --top_genes=300 --logtsne
